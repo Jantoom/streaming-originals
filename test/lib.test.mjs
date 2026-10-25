@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  judgeMovie, judgeSeries, flattenReleases, valueSpellings, catalogPaths,
+  judgeMovie, judgeSeries, flattenReleases, valueSpellings, catalogPaths, defaultCatalogPaths,
   paginate, buildManifest, matchProviders, pickNetwork, RELEASE,
 } from "../src/lib.mjs";
 
 const svc = { moviesSince: "2012-01-01", keywords: [/\bnetflix\b/i] };
-const rel = (type, date, note = "") => ({ country: "US", type, date: Date.parse(date), note });
+const rel = (type, date, note = "", country = "US") => ({ country, type, date: Date.parse(date), note });
 
 test("movie: digital premiere is an original", () => {
   assert.equal(judgeMovie({ releases: [rel(RELEASE.DIGITAL, "2021-03-01", "Netflix")] }, svc).ok, true);
@@ -41,8 +41,8 @@ test("movie: no release data is excluded", () => {
 
 test("movie: strict mode needs the service named somewhere", () => {
   const releases = [rel(RELEASE.DIGITAL, "2021-03-01")];
-  assert.equal(judgeMovie({ releases, companies: ["Some Studio"] }, svc, true).reason, "no-keyword");
-  assert.equal(judgeMovie({ releases, companies: ["Netflix Studios"] }, svc, true).ok, true);
+  assert.equal(judgeMovie({ releases, companies: ["Some Studio"] }, svc, { strict: true }).reason, "no-keyword");
+  assert.equal(judgeMovie({ releases, companies: ["Netflix Studios"] }, svc, { strict: true }).ok, true);
 });
 
 test("series: first network decides by default", () => {
@@ -75,6 +75,11 @@ test("catalog paths for first and later pages", () => {
     "catalog/movie/streaming-originals/genre=Netflix&skip=0.json",
   ]);
   assert.deepEqual(catalogPaths("series", "Netflix", 100), ["catalog/series/streaming-originals/genre=Netflix&skip=100.json"]);
+});
+
+test("default catalog paths have no genre", () => {
+  assert.deepEqual(defaultCatalogPaths("movie", 0), ["catalog/movie/streaming-originals.json", "catalog/movie/streaming-originals/skip=0.json"]);
+  assert.deepEqual(defaultCatalogPaths("series", 100), ["catalog/series/streaming-originals/skip=100.json"]);
 });
 
 test("paginate", () => {
@@ -127,9 +132,57 @@ test("short gap but no link to the service → excluded", () => {
   assert.equal(judgeMovie({ releases }, real("Netflix")).reason, "theatrical-first");
 });
 
-test("Killers of the Flower Moon: ~3 month run, Apple Studios → counts for Apple TV +", () => {
-  const releases = [rel(RELEASE.THEATRICAL, "2023-10-20"), rel(RELEASE.DIGITAL, "2024-01-12")];
-  assert.equal(judgeMovie({ releases, companies: ["Apple Studios", "Imperative Entertainment"] }, real("Apple TV +")).ok, true);
+test("Killers of the Flower Moon: ~3 month run, rental, then Apple TV+ → counts", () => {
+  const releases = [rel(RELEASE.THEATRICAL, "2023-10-18", "", "BE"), rel(RELEASE.THEATRICAL, "2023-10-20"),
+    rel(RELEASE.DIGITAL, "2023-12-05"), rel(RELEASE.DIGITAL, "2024-01-11", "Apple TV+")];
+  assert.equal(judgeMovie({ releases }, real("Apple TV +"), { region: "US" }).ok, true);
+});
+
+test("a production company alone doesn't open the window (rental date isn't the service's)", () => {
+  // Project Hail Mary: Amazon MGM in cinemas, rental at 53 days, Prime Video at 107.
+  const releases = [rel(RELEASE.THEATRICAL, "2026-03-18", "", "BE"), rel(RELEASE.THEATRICAL, "2026-03-20"),
+    rel(RELEASE.DIGITAL, "2026-05-12"), rel(RELEASE.DIGITAL, "2026-07-03", "Prime Video")];
+  const r = judgeMovie({ releases, companies: ["Amazon MGM Studios"] }, real("Prime Video"), { region: "US" });
+  assert.equal(r.reason, "theatrical-first");
+});
+
+test("Interstellar: rental soon after cinemas plus a Prime Video note years later → excluded", () => {
+  const releases = [rel(RELEASE.THEATRICAL, "2014-11-05", "", "BE"), rel(RELEASE.DIGITAL, "2014-11-07", "", "AT"),
+    rel(RELEASE.THEATRICAL, "2014-11-07"), rel(RELEASE.DIGITAL, "2015-03-31"), rel(RELEASE.DIGITAL, "2026-08-03", "Prime Video")];
+  assert.equal(judgeMovie({ releases }, real("Prime Video"), { region: "US" }).reason, "theatrical-first");
+});
+
+test("a stray early digital date abroad doesn't make a cinema film an original", () => {
+  // Baywatch: one country lists "Digital" a week before cinemas; nothing in the US.
+  const releases = [rel(RELEASE.DIGITAL, "2017-05-18", "", "CZ"), rel(RELEASE.THEATRICAL, "2017-05-25", "", "PR"),
+    rel(RELEASE.THEATRICAL, "2017-05-26"), rel(RELEASE.DIGITAL, "2017-08-21", "Streaming", "BR"),
+    rel(RELEASE.DIGITAL, "2022-02-01", "Prime Video", "FR")];
+  assert.equal(judgeMovie({ releases }, real("Prime Video"), { region: "US" }).reason, "theatrical-first");
+});
+
+test("a service note abroad inside the window doesn't count when the US one is later", () => {
+  // Now You See Me: Now You Don't: Prime Video in Brazil at 50 days, in the US 11 months later.
+  const releases = [rel(RELEASE.THEATRICAL, "2025-11-12", "", "BE"), rel(RELEASE.THEATRICAL, "2025-11-14"),
+    rel(RELEASE.DIGITAL, "2025-12-16"), rel(RELEASE.DIGITAL, "2026-01-01", "Prime Video", "BR"), rel(RELEASE.DIGITAL, "2026-10-02", "Prime Video")];
+  assert.equal(judgeMovie({ releases }, real("Prime Video"), { region: "US" }).reason, "theatrical-first");
+});
+
+test("licensed Indian release reaching Netflix ~8 weeks after cinemas → excluded", () => {
+  // Jawan, including Turkey's stray "Netflix" digital entry on the cinema date.
+  const releases = [rel(RELEASE.THEATRICAL, "2023-09-07"), rel(RELEASE.DIGITAL, "2023-09-07", "Netflix", "TR"),
+    rel(RELEASE.DIGITAL, "2023-11-02", "Netflix")];
+  assert.equal(judgeMovie({ releases }, real("Netflix"), { region: "US" }).reason, "theatrical-first");
+});
+
+test("streamers' own short cinema runs still count", () => {
+  const redOne = [rel(RELEASE.THEATRICAL, "2024-11-06", "", "ID"), rel(RELEASE.THEATRICAL, "2024-11-15"),
+    rel(RELEASE.DIGITAL, "2024-12-12", "Prime Video"), rel(RELEASE.DIGITAL, "2025-02-11")];
+  assert.equal(judgeMovie({ releases: redOne }, real("Prime Video"), { region: "US" }).reason, "short-theatrical-window");
+  const irishman = [rel(RELEASE.DIGITAL, "2019-11-01", "", "NL"), rel(RELEASE.THEATRICAL, "2019-11-14", "", "AT"),
+    rel(RELEASE.DIGITAL, "2019-11-27", "Netflix")];
+  assert.equal(judgeMovie({ releases: irishman }, real("Netflix"), { region: "US" }).ok, true);
+  const theIdeaOfYou = [rel(RELEASE.THEATRICAL, "2024-05-02", "", "MX"), rel(RELEASE.DIGITAL, "2024-05-02", "Prime Video")];
+  assert.equal(judgeMovie({ releases: theIdeaOfYou }, real("Prime Video"), { region: "US" }).reason, "home-premiere");
 });
 
 test("Apple TV rental-store note doesn't count as Apple TV+", () => {

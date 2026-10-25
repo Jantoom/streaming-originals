@@ -153,6 +153,10 @@ test("full build against fake TMDB", async () => {
   assert.equal(report.services["Netflix"].series.tally["no-imdb-id"], 1);
   assert.equal(report.services["Netflix"].series.tally["duplicate"], 1);
   assert.deepEqual(await read(outDir, cat("series", "Netflix", 0)), await read(outDir, cat("series", "Netflix")));
+  // A request without a service gets the default (Netflix), page by page.
+  assert.deepEqual(await read(outDir, "catalog/series/streaming-originals.json"), { metas: p0 });
+  assert.deepEqual(await read(outDir, "catalog/series/streaming-originals/skip=100.json"), { metas: p1 });
+  assert.ok(existsSync(join(outDir, "catalog/movie/streaming-originals.json")));
   assert.equal(p0[0].type, "series");
   assert.match(p0[0].poster, /^https:\/\/image\.tmdb\.org\/t\/p\/w500\//);
 

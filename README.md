@@ -13,7 +13,7 @@ Services: Netflix, Prime Video, HBO Max, Disney+, Apple TV +, Crunchyroll, Shudd
 5. **Run the first build:** repo → Actions → "Build and deploy catalogs" → Run workflow. The first run takes several minutes because nothing is cached yet; later runs are much faster.
 6. **Install:** open `https://<your-username>.github.io/<repo-name>/` and click *Install in Stremio*, or paste `https://<your-username>.github.io/<repo-name>/manifest.json` into Stremio's addon search.
 
-In Stremio, open **Discover**, pick Movies or Series, choose **Streaming Originals** as the catalog, then pick a service from the dropdown. Because the filter is required, it only appears in Discover, not as a home-screen row.
+In Stremio, open **Discover**, pick Movies or Series, choose **Streaming Originals** as the catalog, then pick a service from the dropdown. It opens on Netflix (`defaultService` in `services.config.mjs`). Because the filter is required, it only appears in Discover, not as a home-screen row.
 
 After each build, `report.json` on the site shows which networks and providers were resolved, how many titles each service kept, and why the rest were dropped.
 
@@ -23,15 +23,15 @@ After each build, `report.json` on the site shows which networks and providers w
 
 **Movies** have no network on TMDB, so they take two steps:
 1. Fetch everything the service streams in the US (TMDB watch providers).
-2. Keep only films whose first home release (digital, or TV for HBO/Showtime films) came before any theatrical release, and not before the service started making films (`moviesSince`). Short limited cinema runs and festival screenings are allowed, since streamers use those for awards eligibility.
+2. Keep only films whose first home release (digital, or TV for HBO/Showtime films) came before any theatrical release, and not before the service started making films (`moviesSince`). Short limited cinema runs and festival screenings are allowed, since streamers use those for awards eligibility. Home release dates come from the US entries when TMDB has any, because one-off entries elsewhere are often wrong (a cinema date typed in as "Digital").
 
-**Streamer films that opened in cinemas first** (*Glass Onion*, *Killers of the Flower Moon*) look like studio films on TMDB, so they get an exception: the film still counts if it reached home release within a short window of its cinema date **and** TMDB ties it to the service, through a home-release note ("Netflix") or a production company ("Apple Studios"). *The Dark Knight* fails both tests. This is set per service in `services.config.mjs`:
+**Streamer films that opened in cinemas first** (*Glass Onion*, *Killers of the Flower Moon*) look like studio films on TMDB, so they get an exception: the film still counts if TMDB has a home release noted with the service's name ("Netflix") within a short window of its first cinema date. The name and the date have to be on the same release. *Interstellar* has a rental release months after cinemas and a "Prime Video" release in 2026, so it stays out: that's licensing. This is set per service in `services.config.mjs`:
 
-| Service | Window | Matched on |
+| Service | Window | Note must say |
 |---|---|---|
-| Netflix | 60 days | "Netflix" |
-| Prime Video | 60 days | "Prime Video", "Amazon Studios", "Amazon MGM Studios" |
-| Apple TV + | 120 days | "Apple Original Films", "Apple Studios", "Apple TV+" |
+| Netflix | 45 days | "Netflix" |
+| Prime Video | 60 days | "Prime Video" |
+| Apple TV + | 120 days | "Apple TV+" |
 
 It's deliberately off for the others: on Disney+ or Paramount+ it would pull in every Pixar, Marvel or Paramount cinema release, since those studios' films go to the service a few months later. Films let in this way are counted as `kept-via-theatrical-window` in `report.json`, so you can see how many there are.
 
@@ -44,7 +44,7 @@ overrides: { movie: { include: ["tt..."], exclude: ["tt..."] }, series: { includ
 Included titles are appended after the automatic list. An id TMDB can't find shows up as a warning in the report.
 
 Known edge cases:
-- The theatrical exception depends on TMDB recording the service in a release note or production company. If neither is there, the film is excluded; use an override.
+- The theatrical exception depends on TMDB noting the service on the release. If it doesn't, or the film stayed in cinemas longer than the window (*F1* reached Apple TV after six months), it's excluded; use an override.
 - Licensed direct-to-digital films can slip into the movie lists, most often on Prime Video. Set `strictMovies: true` on a service (or globally) to also require the service's name in a release note or production company. It's stricter but can drop genuine originals with incomplete TMDB data.
 - Crunchyroll: most simulcast anime is credited on TMDB to its Japanese broadcaster, so the Crunchyroll series list is mainly Crunchyroll Originals and shows TMDB editors tagged with it.
 

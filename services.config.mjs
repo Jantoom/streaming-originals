@@ -19,16 +19,18 @@
 //   name the service in a digital release note or a production company.
 //   `theatricalWindowDays` + `theatricalKeywords` let a service's own films that
 //   opened in cinemas first still count (Glass Onion: cinemas, then Netflix 30
-//   days later). The film must reach home release within the window AND match a
-//   keyword in a home-release note or production company. Only set this for
-//   services that release their own films theatrically: on Disney+ or Paramount+
-//   it would pull in every Pixar or Paramount cinema release.
+//   days later). A home release whose note matches a keyword must come within the
+//   window of the first cinema date; a note years later (Interstellar, "Prime
+//   Video" in 2026) is licensing and doesn't count. Only set this for services
+//   that release their own films theatrically: on Disney+ or Paramount+ it would
+//   pull in every Pixar or Paramount cinema release.
 //
 // OVERRIDES fix anything the rules get wrong, by IMDb id:
 //   overrides: { movie: { include: ["tt..."], exclude: ["tt..."] }, series: { ... } }
 
 export const config = {
-  region: "US",                // watch-provider region for movies
+  region: "US",                // watch-provider region for movies; its release dates are trusted first
+  defaultService: "Netflix",   // selected when Discover opens the catalog; must be a service name below
   language: "en-US",
   pageSize: 100,               // items per catalog page (Stremio pages in 100s)
   maxSeriesPerService: 1000,
@@ -52,7 +54,9 @@ export const services = [
     ],
     providers: [/^netflix/i],
     keywords: [/\bnetflix\b/i],
-    theatricalWindowDays: 60,               // Glass Onion: 30 days
+    // Glass Onion: 30 days. Kept under ~8 weeks, the usual gap before licensed
+    // Indian cinema releases (Jawan, RRR) reach Netflix.
+    theatricalWindowDays: 45,
     theatricalKeywords: [/\bnetflix\b/i],
     // overrides: { movie: { include: [], exclude: [] }, series: { include: [], exclude: [] } },
   },
@@ -68,7 +72,7 @@ export const services = [
     keywords: [/\bamazon\b/i, /\bprime video\b/i, /\bfreevee\b/i],
     // Amazon MGM films sometimes play in cinemas for a few weeks first (Red One).
     theatricalWindowDays: 60,
-    theatricalKeywords: [/\bprime video\b/i, /\bamazon (mgm )?studios\b/i],
+    theatricalKeywords: [/\bprime video\b/i],
   },
   {
     name: "HBO Max",
@@ -107,7 +111,7 @@ export const services = [
     // (Killers of the Flower Moon, Napoleon, F1).
     theatricalWindowDays: 120,
     // Not plain "Apple TV": that's also the rental store's name in release notes.
-    theatricalKeywords: [/\bapple (original films|studios)\b/i, /\bapple tv ?(\+|plus)/i],
+    theatricalKeywords: [/\bapple tv ?(\+|plus)/i],
   },
   {
     name: "Crunchyroll",

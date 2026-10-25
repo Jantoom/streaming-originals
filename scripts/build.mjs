@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { config as defaultConfig, services as defaultServices } from "../services.config.mjs";
 import { createClient, openCache, mapLimit } from "../src/tmdb.mjs";
 import {
-  buildManifest, catalogPaths, flattenReleases, judgeMovie, judgeSeries,
+  buildManifest, catalogPaths, defaultCatalogPaths, flattenReleases, judgeMovie, judgeSeries,
   matchProviders, paginate, pickNetwork, toMeta,
 } from "../src/lib.mjs";
 
@@ -33,6 +33,10 @@ export async function build({
   const warnings = [];
   const warn = (m) => { warnings.push(m); log(`  ! ${m}`); };
   const report = { builtAt: new Date(now).toISOString(), services: {} };
+  // The default service goes first: Stremio preselects a required filter's first option.
+  const defaultName = config.defaultService ?? services[0]?.name;
+  if (!services.some((s) => s.name === defaultName)) throw new Error(`defaultService "${defaultName}" isn't one of the services.`);
+  services = [...services].sort((a, b) => (b.name === defaultName) - (a.name === defaultName));
 
   // ---- 1. Resolve networks (series) and providers (movies) -------------------
   log("Resolving networks and providers…");
@@ -161,7 +165,7 @@ export async function build({
     const metas = [], seen = new Set();
     candidates.forEach((item, i) => {
       const d = details[i];
-      const v = judgeMovie(d, svc, strict);
+      const v = judgeMovie(d, svc, { strict, region: config.region });
       const reason = !v.ok ? v.reason : !d.imdb ? "no-imdb-id" : seen.has(d.imdb) ? "duplicate" : "kept";
       tally[reason] = (tally[reason] ?? 0) + 1;
       if (reason === "kept" && v.reason === "short-theatrical-window") {
@@ -216,7 +220,9 @@ export async function build({
     for (const [type, result] of [["series", series], ["movie", movies]]) {
       total += result.metas.length;
       for (const page of paginate(result.metas, config.pageSize)) {
-        for (const rel of catalogPaths(type, r.svc.name, page.skip)) { await writeJson(rel, { metas: page.items }); files++; }
+        const paths = catalogPaths(type, r.svc.name, page.skip);
+        if (r.svc.name === defaultName) paths.push(...defaultCatalogPaths(type, page.skip));
+        for (const rel of paths) { await writeJson(rel, { metas: page.items }); files++; }
       }
     }
     report.services[r.svc.name] = {

@@ -20,24 +20,40 @@ export function flattenReleases(releaseDates) {
 }
 
 /**
+ * The home releases a movie is judged by. TMDB has stray entries (a cinema date
+ * typed as "Digital" in one country), so use the region's own entries when there
+ * are any, else entries with a note (a service or channel name), else all.
+ */
+function homeReleases(releases, region) {
+  const home = releases.filter((r) => r.type === RELEASE.DIGITAL || r.type === RELEASE.TV);
+  const inRegion = region ? home.filter((r) => r.country === region) : [];
+  if (inRegion.length) return inRegion;
+  const noted = home.filter((r) => r.note.trim());
+  return noted.length ? noted : home;
+}
+
+/**
  * Decide whether a movie premiered on a streaming service rather than in cinemas.
- *  - It must have a home premiere: digital (4) or TV (6). HBO/Showtime films
- *    premiere as TV releases, streamers usually as digital.
+ *  - It must have a home premiere: digital (4) or TV (6), taken from the region's
+ *    entries when it has any (see homeReleases). HBO/Showtime films premiere as
+ *    TV releases, streamers usually as digital.
  *  - No theatrical (3) release anywhere more than a day before that premiere.
  *    Limited (2) runs and festival premieres (1) are allowed: streamers often give
  *    awards contenders a short cinema run first.
  *  - Exception for services that release their own films in cinemas first
  *    (Glass Onion, Killers of the Flower Moon): a theatrical-first film still
- *    counts if it reached home release within `theatricalWindowDays` of its
- *    first theatrical date AND a home-release note or production company matches
- *    `theatricalKeywords`. The Dark Knight fails both. Off unless configured.
+ *    counts if a home release whose note matches `theatricalKeywords` came within
+ *    `theatricalWindowDays` of its first theatrical date. The note and the date
+ *    must be on the same release: Interstellar has a rental release a few months
+ *    after cinemas and a "Prime Video" one in 2026, which is licensing, not an
+ *    original. Off unless configured.
  *  - The home premiere can't predate the service (`since`), which filters out old
  *    library films whose TMDB entries happen to lack theatrical dates.
  *  - strict: the service must also be named in a home-release note or a
  *    production company.
  */
-export function judgeMovie({ releases, companies = [] }, service, strict = false) {
-  const home = releases.filter((r) => r.type === RELEASE.DIGITAL || r.type === RELEASE.TV);
+export function judgeMovie({ releases, companies = [] }, service, { strict = false, region } = {}) {
+  const home = homeReleases(releases, region);
   if (!home.length) return { ok: false, reason: "no-home-release" };
   const firstHome = Math.min(...home.map((r) => r.date));
   const text = [...home.map((r) => r.note), ...companies].join(" | ");
@@ -46,10 +62,10 @@ export function judgeMovie({ releases, companies = [] }, service, strict = false
   const theatrical = releases.filter((r) => r.type === RELEASE.THEATRICAL).map((r) => r.date);
   const firstTheatrical = theatrical.length ? Math.min(...theatrical) : Infinity;
   if (firstTheatrical < firstHome - DAY) {
-    const windowDays = service.theatricalWindowDays ?? 0;
-    const gapDays = (firstHome - firstTheatrical) / DAY;
-    const ownFilm = (service.theatricalKeywords ?? []).some((k) => k.test(text));
-    if (!(windowDays > 0 && gapDays <= windowDays && ownFilm)) return { ok: false, reason: "theatrical-first" };
+    const windowEnd = firstTheatrical + (service.theatricalWindowDays ?? 0) * DAY;
+    const keywords = service.theatricalKeywords ?? [];
+    const ownRelease = home.some((r) => r.date <= windowEnd && keywords.some((k) => k.test(r.note)));
+    if (!ownRelease) return { ok: false, reason: "theatrical-first" };
     reason = "short-theatrical-window";
   }
   if (service.moviesSince && firstHome < Date.parse(service.moviesSince)) {
@@ -110,6 +126,16 @@ export function catalogPaths(type, serviceName, skip) {
     const base = `catalog/${type}/${CATALOG_ID}/genre=${v}`;
     return skip === 0 ? [`${base}.json`, `${base}&skip=0.json`] : [`${base}&skip=${skip}.json`];
   });
+}
+
+/**
+ * Paths for a request with no service selected. Stremio's own apps always send
+ * the first option of a required filter, but other clients may send none; they
+ * get the default service instead of a 404.
+ */
+export function defaultCatalogPaths(type, skip) {
+  const base = `catalog/${type}/${CATALOG_ID}`;
+  return skip === 0 ? [`${base}.json`, `${base}/skip=0.json`] : [`${base}/skip=${skip}.json`];
 }
 
 /** Split items into pages; always at least one (possibly empty) page. */
