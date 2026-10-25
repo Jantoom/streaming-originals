@@ -41,9 +41,11 @@ export const config = {
   defaultService: "Netflix",   // selected when Discover opens the catalog; must be a service name below
   language: "en-US",
   pageSize: 100,               // items per catalog page (Stremio pages in 100s)
-  maxSeriesPerService: 1000,
-  maxMovieCandidatesPerService: 2000, // pool checked before the originals filter
-  maxMoviesPerService: 1000,
+  // Netflix and Prime Video hit the old 1000/2000 caps. TMDB's discover stops at
+  // 10,000 results, so candidate pools can't usefully go above that.
+  maxSeriesPerService: 3000,   // up to 1.5x as many shows are checked
+  maxMovieCandidatesPerService: 6000, // pool checked before the originals filter
+  maxMoviesPerService: 3000,
   minVotes: 3,                 // drop near-empty TMDB entries
   includeUnaired: false,       // series that haven't premiered yet
   strictMovies: false,         // global default; can be overridden per service
