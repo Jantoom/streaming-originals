@@ -44,23 +44,30 @@ export async function build({
     ?? (await tmdb.get("/watch/providers/movie", { watch_region: config.region, language: lang }))?.results ?? [];
   cache.set("providers:" + config.region, providerList);
 
-  async function resolveNetwork(net) {
-    if (net.id) {
-      const n = await tmdb.get(`/network/${net.id}`);
-      if (!n) throw new Error(`Network id ${net.id} (${net.label}) not found on TMDB.`);
-      if (!net.match.test(n.name)) throw new Error(`Network id ${net.id} is "${n.name}" on TMDB, which doesn't match ${net.match} for ${net.label}.`);
+  // Networks are found from anchor shows, companies from anchor films.
+  const LINKS = {
+    network: { cacheKey: "net", path: "/network", search: "/search/tv", year: "first_air_date_year", detail: "/tv", list: (d) => d?.networks, title: (d) => d.name },
+    company: { cacheKey: "co", path: "/company", search: "/search/movie", year: "primary_release_year", detail: "/movie", list: (d) => d?.production_companies, title: (d) => d.title },
+  };
+
+  async function resolveLink(kind, link) {
+    const L = LINKS[kind];
+    if (link.id) {
+      const n = await tmdb.get(`${L.path}/${link.id}`);
+      if (!n) throw new Error(`${kind} id ${link.id} (${link.label}) not found on TMDB.`);
+      if (!link.match.test(n.name)) throw new Error(`${kind} id ${link.id} is "${n.name}" on TMDB, which doesn't match ${link.match} for ${link.label}.`);
       return { id: n.id, name: n.name, via: "pinned id" };
     }
-    const key = `net:${net.label}:${net.match}`;
+    const key = `${L.cacheKey}:${link.label}:${link.match}`;
     const cached = cache.get(key, 30 * DAY);
     if (cached) return cached;
-    for (const [query, year] of net.anchors) {
-      const s = await tmdb.get("/search/tv", { query, first_air_date_year: year, language: lang });
-      for (const show of (s?.results ?? []).slice(0, 3)) {
-        const d = await tmdb.get(`/tv/${show.id}`, { language: lang });
-        const n = pickNetwork(d?.networks, net.match);
+    for (const [query, year] of link.anchors) {
+      const s = await tmdb.get(L.search, { query, [L.year]: year, language: lang });
+      for (const hit of (s?.results ?? []).slice(0, 3)) {
+        const d = await tmdb.get(`${L.detail}/${hit.id}`, { language: lang });
+        const n = pickNetwork(L.list(d), link.match);
         if (n) {
-          const found = { id: n.id, name: n.name, via: `${d.name} (${year})` };
+          const found = { id: n.id, name: n.name, via: `${L.title(d)} (${year})` };
           cache.set(key, found);
           return found;
         }
@@ -69,19 +76,29 @@ export async function build({
     return null;
   }
 
+  async function resolveLinks(kind, svc, links = []) {
+    const out = [];
+    for (const link of links) {
+      const r = await resolveLink(kind, link);
+      if (r) out.push({ label: link.label, ...r });
+      else warn(`${svc.name}: couldn't resolve ${kind} "${link.label}" from its anchors; skipped.`);
+    }
+    return out;
+  }
+
   const resolved = [];
   for (const svc of services) {
-    const networks = [];
-    for (const net of svc.networks) {
-      const r = await resolveNetwork(net);
-      if (r) networks.push({ label: net.label, ...r });
-      else warn(`${svc.name}: couldn't resolve network "${net.label}" from its anchor shows; skipped.`);
-    }
+    const networks = await resolveLinks("network", svc, svc.networks);
+    const companies = await resolveLinks("company", svc, svc.companies);
     const providerIds = matchProviders(providerList, svc.providers, svc.pinnedProviderIds);
     const providerNames = providerList.filter((p) => providerIds.includes(p.provider_id)).map((p) => p.provider_name);
     if (!providerIds.length) warn(`${svc.name}: no ${config.region} watch provider matched; movie catalog will be empty.`);
-    resolved.push({ svc, networkIds: [...new Set(networks.map((n) => n.id))], networks, providerIds, providerNames });
-    log(`  ${svc.name}: networks [${networks.map((n) => `${n.name}=${n.id}`).join(", ") || "none"}], providers [${providerNames.join(", ") || "none"}]`);
+    resolved.push({
+      svc, networks, companies, providerIds, providerNames,
+      networkIds: [...new Set(networks.map((n) => n.id))], companyIds: [...new Set(companies.map((c) => c.id))],
+    });
+    const list = (xs) => xs.map((n) => `${n.name}=${n.id}`).join(", ") || "none";
+    log(`  ${svc.name}: networks [${list(networks)}], companies [${list(companies)}], providers [${providerNames.join(", ") || "none"}]`);
   }
 
   // ---- 2. Discover candidates -----------------------------------------------
@@ -131,7 +148,7 @@ export async function build({
     return { metas, tally, candidates: candidates.length };
   }
 
-  async function moviesFor({ svc, providerIds }) {
+  async function moviesFor({ svc, providerIds, companyIds }) {
     const tally = {};
     if (!providerIds.length) return { metas: [], tally, candidates: 0 };
     const strict = svc.strictMovies ?? config.strictMovies;
@@ -150,11 +167,13 @@ export async function build({
       const key = `movie:${item.id}`;
       let d = cache.get(key, 14 * DAY);
       if (d && !d.imdb && !cache.get(key, 3 * DAY)) d = undefined;
+      if (d && !d.companyIds) d = undefined; // entries cached before company ids were stored
       if (!d) {
         const r = await tmdb.get(`/movie/${item.id}`, { append_to_response: "release_dates", language: lang });
         d = {
           imdb: r?.imdb_id || null,
           companies: (r?.production_companies ?? []).map((c) => c.name),
+          companyIds: (r?.production_companies ?? []).map((c) => c.id),
           releases: flattenReleases(r?.release_dates),
         };
         cache.set(key, d);
@@ -165,12 +184,13 @@ export async function build({
     const metas = [], seen = new Set();
     candidates.forEach((item, i) => {
       const d = details[i];
-      const v = judgeMovie(d, svc, { strict, region: config.region });
+      const v = judgeMovie(d, svc, { strict, region: config.region, ownCompanyIds: companyIds });
       const reason = !v.ok ? v.reason : !d.imdb ? "no-imdb-id" : seen.has(d.imdb) ? "duplicate" : "kept";
       tally[reason] = (tally[reason] ?? 0) + 1;
       if (reason === "kept" && v.reason === "short-theatrical-window") {
         tally["kept-via-theatrical-window"] = (tally["kept-via-theatrical-window"] ?? 0) + 1;
       }
+      if (reason === "kept" && v.reason === "own-company") tally["kept-via-company"] = (tally["kept-via-company"] ?? 0) + 1;
       if (reason === "kept" && metas.length < config.maxMoviesPerService) { seen.add(d.imdb); metas.push(toMeta("movie", item, d.imdb)); }
     });
     return { metas, tally, candidates: candidates.length };
@@ -226,7 +246,7 @@ export async function build({
       }
     }
     report.services[r.svc.name] = {
-      networks: r.networks, providers: r.providerNames,
+      networks: r.networks, companies: r.companies, providers: r.providerNames,
       series: { kept: series.metas.length, candidates: series.candidates, tally: series.tally },
       movies: { kept: movies.metas.length, candidates: movies.candidates, tally: movies.tally },
     };

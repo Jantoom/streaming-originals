@@ -35,6 +35,15 @@ After each build, `report.json` on the site shows which networks and providers w
 
 It's deliberately off for the others: on Disney+ or Paramount+ it would pull in every Pixar, Marvel or Paramount cinema release, since those studios' films go to the service a few months later. Films let in this way are counted as `kept-via-theatrical-window` in `report.json`, so you can see how many there are.
 
+**Films made by the service's own studio** count whatever their release pattern, so *F1* (six months in cinemas) is an Apple TV + original. The film has to be on the service, and its first release of any kind can't be before `moviesSince`. The studios are found the same way as networks, from anchor films:
+
+| Service | Studios |
+|---|---|
+| Prime Video | Amazon Studios, Amazon MGM Studios |
+| Apple TV + | Apple Studios (Apple Original Films) |
+
+This includes Amazon's cinema releases such as *Project Hail Mary* and *Air*. Netflix isn't listed because TMDB credits Netflix as producer on only a few dozen films, and Disney or Paramount studios would pull in their whole cinema slates. These films are counted as `kept-via-company` in `report.json`.
+
 **Overrides** handle anything the rules still get wrong. Add IMDb ids per service and type:
 
 ```js
@@ -44,7 +53,7 @@ overrides: { movie: { include: ["tt..."], exclude: ["tt..."] }, series: { includ
 Included titles are appended after the automatic list. An id TMDB can't find shows up as a warning in the report.
 
 Known edge cases:
-- The theatrical exception depends on TMDB noting the service on the release. If it doesn't, or the film stayed in cinemas longer than the window (*F1* reached Apple TV after six months), it's excluded; use an override.
+- The theatrical exception depends on TMDB noting the service on the release. If it doesn't, or the film stayed in cinemas longer than the window, it's excluded unless the service's own studio made it; use an override.
 - Licensed direct-to-digital films can slip into the movie lists, most often on Prime Video. Set `strictMovies: true` on a service (or globally) to also require the service's name in a release note or production company. It's stricter but can drop genuine originals with incomplete TMDB data.
 - Crunchyroll: most simulcast anime is credited on TMDB to its Japanese broadcaster, so the Crunchyroll series list is mainly Crunchyroll Originals and shows TMDB editors tagged with it.
 

@@ -25,6 +25,14 @@
 //   that release their own films theatrically: on Disney+ or Paramount+ it would
 //   pull in every Pixar or Paramount cinema release.
 //
+// COMPANIES (optional) are the service's own film studios, found from anchor films
+// the same way as networks (`match`, `anchors`, optional `id`). A film the service
+// streams that one of them produced counts even if it opened in cinemas first
+// (F1, Project Hail Mary), as long as its first release of any kind isn't before
+// `moviesSince`. Only list studios that make films for the service: TMDB credits
+// Netflix on too few of its films for this to help, and Disney or Paramount
+// studios would pull in their whole cinema slates.
+//
 // OVERRIDES fix anything the rules get wrong, by IMDb id:
 //   overrides: { movie: { include: ["tt..."], exclude: ["tt..."] }, series: { ... } }
 
@@ -73,6 +81,10 @@ export const services = [
     // Amazon MGM films sometimes play in cinemas for a few weeks first (Red One).
     theatricalWindowDays: 60,
     theatricalKeywords: [/\bprime video\b/i],
+    companies: [
+      { label: "Amazon Studios", match: /^amazon studios$/i, anchors: [["Being the Ricardos", 2021], ["The Tender Bar", 2021]] },
+      { label: "Amazon MGM Studios", match: /^amazon mgm studios$/i, anchors: [["Red One", 2024], ["Road House", 2024]] },
+    ],
   },
   {
     name: "HBO Max",
@@ -112,6 +124,9 @@ export const services = [
     theatricalWindowDays: 120,
     // Not plain "Apple TV": that's also the rental store's name in release notes.
     theatricalKeywords: [/\bapple tv ?(\+|plus)/i],
+    companies: [
+      { label: "Apple Studios", match: /^apple (studios|original films)$/i, anchors: [["F1", 2025], ["Killers of the Flower Moon", 2023], ["Napoleon", 2023]] },
+    ],
   },
   {
     name: "Crunchyroll",

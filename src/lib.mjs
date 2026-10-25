@@ -51,8 +51,19 @@ function homeReleases(releases, region) {
  *    library films whose TMDB entries happen to lack theatrical dates.
  *  - strict: the service must also be named in a home-release note or a
  *    production company.
+ *  - Films produced by one of the service's own studios (`ownCompanyIds`) count
+ *    whatever their release pattern (F1 ran in cinemas for six months), as long
+ *    as their first release of any kind isn't before `moviesSince`.
  */
-export function judgeMovie({ releases, companies = [] }, service, { strict = false, region } = {}) {
+export function judgeMovie(movie, service, { ownCompanyIds = [], ...opts } = {}) {
+  const verdict = judgeReleases(movie, service, opts);
+  if (verdict.ok || !ownCompanyIds.some((id) => movie.companyIds?.includes(id))) return verdict;
+  const first = Math.min(...movie.releases.map((r) => r.date));
+  if (!Number.isFinite(first) || (service.moviesSince && first < Date.parse(service.moviesSince))) return verdict;
+  return { ok: true, reason: "own-company" };
+}
+
+function judgeReleases({ releases, companies = [] }, service, { strict = false, region } = {}) {
   const home = homeReleases(releases, region);
   if (!home.length) return { ok: false, reason: "no-home-release" };
   const firstHome = Math.min(...home.map((r) => r.date));

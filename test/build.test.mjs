@@ -18,6 +18,8 @@ const NET = {
   // "Sundance Now" deliberately missing: its anchors won't resolve, to test the warning.
 };
 const FOX = { id: 19, name: "FOX" };
+// Fake company ids and TMDB names for each configured company label.
+const CO = { "Apple Studios": [194232, "Apple Studios"], "Amazon Studios": [20580, "Amazon Studios"], "Amazon MGM Studios": [210099, "Amazon MGM Studios"] };
 
 function fakeTmdb() {
   const shows = new Map();   // tmdb id -> { name, networks:[{id,name}], imdb, first_air_date }
@@ -38,6 +40,15 @@ function fakeTmdb() {
     });
   }
   const anchorIds = new Set(anchors.values());
+
+  // Anchor films, credited to a decoy studio and the service's own.
+  const filmAnchors = new Map(); // "query|year" -> movie id
+  for (const svc of services) for (const co of svc.companies ?? []) {
+    const [id, name] = CO[co.label];
+    for (const [q, y] of co.anchors) {
+      filmAnchors.set(`${q}|${y}`, addMovie({ title: q, imdb: null, providers: [], releases: [], companies: [{ id: 5, name: "Plan B" }, { id, name }] }));
+    }
+  }
 
   // Netflix series: 231 originals, one moved show, one without IMDb id, one duplicate IMDb id.
   for (let i = 0; i < 231; i++) addShow({ name: `Netflix Show ${i}`, networks: [{ id: 213, name: "Netflix" }], imdb: `ttnfs${i}`, first_air_date: "2020-01-01" });
@@ -67,6 +78,9 @@ function fakeTmdb() {
   addMovie({ title: "HBO Film", imdb: "tthbofilm", providers: [P.max], releases: [R(6, "2020-04-25", "HBO")] });
   addMovie({ title: "Apple Film", imdb: "ttapplefilm", providers: [P.appleplus], releases: [R(4, "2021-12-10", "Apple TV+")] });
   addMovie({ title: "Store Rental", imdb: "ttrental", providers: [P.applestore], releases: [R(4, "2021-12-10")] });
+  // Apple's own film after a six-month cinema run; another studio's with the same pattern.
+  addMovie({ title: "F1", imdb: "ttf1", providers: [P.appleplus], releases: [R(3, "2025-06-27"), R(4, "2025-12-11", "Apple TV")], companies: [{ id: 194232, name: "Apple Studios" }] });
+  addMovie({ title: "Licensed Hit", imdb: "ttlicensed", providers: [P.appleplus], releases: [R(3, "2025-06-27"), R(4, "2025-12-11", "Apple TV")], companies: [{ id: 33, name: "Universal Pictures" }] });
 
   let requests = 0;
   const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -78,6 +92,10 @@ function fakeTmdb() {
     const q = Object.fromEntries(u.searchParams);
     const p = u.pathname.replace(/^\/3/, "");
     if (p === "/watch/providers/movie") return json({ results: providerList });
+    if (p === "/search/movie") {
+      const id = filmAnchors.get(`${q.query}|${q.primary_release_year}`);
+      return json({ results: id ? [{ id, title: q.query }] : [] });
+    }
     if (p === "/search/tv") {
       const id = anchors.get(`${q.query}|${q.first_air_date_year}`);
       return json({ results: id ? [{ id, name: q.query }] : [] });
@@ -90,7 +108,7 @@ function fakeTmdb() {
     }
     if ((m = p.match(/^\/movie\/(\d+)$/))) {
       const mv = movies.get(Number(m[1]));
-      return json({ id: Number(m[1]), title: mv.title, imdb_id: mv.imdb, production_companies: [], release_dates: { results: [{ iso_3166_1: "US", release_dates: mv.releases }] } });
+      return json({ id: Number(m[1]), title: mv.title, imdb_id: mv.imdb, production_companies: mv.companies ?? [], release_dates: { results: [{ iso_3166_1: "US", release_dates: mv.releases }] } });
     }
     if ((m = p.match(/^\/find\/(tt\w+)$/))) {
       if (m[1] === "ttforced") return json({ movie_results: [{ id: 777, title: "Forced Film", release_date: "2020-02-02", poster_path: "/f.jpg" }], tv_results: [] });
@@ -185,7 +203,11 @@ test("full build against fake TMDB", async () => {
   for (const v of ["Apple TV +", "Apple+TV++", "Apple%20TV%20%2B", "Apple+TV+%2B"]) {
     assert.ok(existsSync(join(outDir, cat("movie", v))), v);
   }
-  assert.deepEqual((await read(outDir, cat("movie", "Apple TV +"))).metas.map((m) => m.id), ["ttapplefilm"]);
+  assert.deepEqual((await read(outDir, cat("movie", "Apple TV +"))).metas.map((m) => m.id), ["ttapplefilm", "ttf1"]);
+  assert.equal(report.services["Apple TV +"].movies.tally["kept-via-company"], 1);
+  assert.deepEqual(report.services["Apple TV +"].companies.map((c) => c.id), [194232]);
+  assert.match(report.services["Apple TV +"].companies[0].via, /F1 \(2025\)/);
+  assert.deepEqual(report.services["Prime Video"].companies.map((c) => c.id), [20580, 210099]);
   assert.deepEqual(report.services["Apple TV +"].providers, ["Apple TV Plus"]);
   assert.ok(existsSync(join(outDir, cat("movie", "Disney%2B"))));
 

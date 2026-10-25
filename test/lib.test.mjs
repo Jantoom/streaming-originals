@@ -192,6 +192,27 @@ test("Apple TV rental-store note doesn't count as Apple TV+", () => {
   assert.equal(judgeMovie({ releases: plus }, real("Apple TV +")).ok, true);
 });
 
+test("own-studio films count even after a long cinema run (F1)", () => {
+  const releases = [rel(RELEASE.THEATRICAL, "2025-06-25", "", "AZ"), rel(RELEASE.THEATRICAL, "2025-06-27"),
+    rel(RELEASE.DIGITAL, "2025-08-22"), rel(RELEASE.DIGITAL, "2025-12-11", "Apple TV")];
+  const f1 = { releases, companyIds: [194232, 130] };
+  assert.equal(judgeMovie(f1, real("Apple TV +"), { region: "US" }).reason, "theatrical-first");
+  assert.deepEqual(judgeMovie(f1, real("Apple TV +"), { region: "US", ownCompanyIds: [194232] }), { ok: true, reason: "own-company" });
+});
+
+test("own-studio path still needs the film to postdate the service", () => {
+  // A 1964 film TMDB happens to credit to Apple's studio id.
+  const old = { releases: [rel(RELEASE.THEATRICAL, "1964-02-05", "", "FR")], companyIds: [194232] };
+  assert.equal(judgeMovie(old, real("Apple TV +"), { ownCompanyIds: [194232] }).ok, false);
+  assert.equal(judgeMovie({ releases: [], companyIds: [194232] }, real("Apple TV +"), { ownCompanyIds: [194232] }).reason, "no-home-release");
+});
+
+test("other studios' films don't use the company path (Interstellar on Prime Video)", () => {
+  const releases = [rel(RELEASE.THEATRICAL, "2014-11-07"), rel(RELEASE.DIGITAL, "2015-03-31"), rel(RELEASE.DIGITAL, "2026-08-03", "Prime Video")];
+  const r = judgeMovie({ releases, companyIds: [4, 923, 9996] }, real("Prime Video"), { region: "US", ownCompanyIds: [20580, 210099] });
+  assert.equal(r.reason, "theatrical-first");
+});
+
 test("services without the exception still exclude theatrical-first (Disney+/Pixar)", () => {
   const releases = [rel(RELEASE.THEATRICAL, "2023-06-16"), rel(RELEASE.DIGITAL, "2023-09-13", "Disney+")];
   assert.equal(judgeMovie({ releases, companies: ["Pixar"] }, real("Disney+")).reason, "theatrical-first");
