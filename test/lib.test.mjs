@@ -73,8 +73,13 @@ test("catalog paths for first and later pages", () => {
   assert.deepEqual(catalogPaths("movie", "Netflix", 0), [
     "catalog/movie/streaming-originals/genre=Netflix.json",
     "catalog/movie/streaming-originals/genre=Netflix&skip=0.json",
+    "catalog/movie/streaming-originals/skip=0&genre=Netflix.json",
   ]);
-  assert.deepEqual(catalogPaths("series", "Netflix", 100), ["catalog/series/streaming-originals/genre=Netflix&skip=100.json"]);
+  // Stremio's next-page request puts skip first.
+  assert.deepEqual(catalogPaths("series", "Netflix", 100), [
+    "catalog/series/streaming-originals/genre=Netflix&skip=100.json",
+    "catalog/series/streaming-originals/skip=100&genre=Netflix.json",
+  ]);
 });
 
 test("default catalog paths have no genre", () => {

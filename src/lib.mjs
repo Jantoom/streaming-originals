@@ -131,11 +131,18 @@ export function valueSpellings(value) {
   return [...set];
 }
 
-/** Every file path for one page of one service's catalog. */
+/**
+ * Every file path for one page of one service's catalog. Stremio puts the extra
+ * it just changed first, so the next page arrives as "skip=100&genre=Netflix";
+ * other clients send "genre=Netflix&skip=100". Write both orders.
+ */
 export function catalogPaths(type, serviceName, skip) {
   return valueSpellings(serviceName).flatMap((v) => {
-    const base = `catalog/${type}/${CATALOG_ID}/genre=${v}`;
-    return skip === 0 ? [`${base}.json`, `${base}&skip=0.json`] : [`${base}&skip=${skip}.json`];
+    const dir = `catalog/${type}/${CATALOG_ID}`;
+    const genre = `genre=${v}`;
+    return skip === 0
+      ? [`${dir}/${genre}.json`, `${dir}/${genre}&skip=0.json`, `${dir}/skip=0&${genre}.json`]
+      : [`${dir}/${genre}&skip=${skip}.json`, `${dir}/skip=${skip}&${genre}.json`];
   });
 }
 
