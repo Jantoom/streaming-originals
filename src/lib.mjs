@@ -156,16 +156,22 @@ export function paginate(items, pageSize) {
   return pages.length ? pages : [{ skip: 0, items: [] }];
 }
 
-export function buildManifest(serviceNames, version = "1.0.0") {
+// Bump when the manifest changes so installed copies refresh.
+export function buildManifest(serviceNames, version = "1.1.0") {
   const catalog = (type) => ({
     type,
     id: CATALOG_ID,
     name: CATALOG_NAME,
-    genres: serviceNames, // older clients read this
     extra: [
       { name: "genre", options: serviceNames, isRequired: true },
       { name: "skip" },
     ],
+    // Older clients (Stremio desktop v4) read these instead of `extra`. Without
+    // extraRequired they treat the service as optional: the dropdown shows
+    // "None" and requests go out without a service.
+    genres: serviceNames,
+    extraSupported: ["genre", "skip"],
+    extraRequired: ["genre"],
   });
   return {
     id: "community.streaming-originals",

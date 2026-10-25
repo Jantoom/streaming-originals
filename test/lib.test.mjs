@@ -95,6 +95,8 @@ test("manifest shape", () => {
     assert.equal(c.name, "Streaming Originals");
     assert.deepEqual(c.extra[0], { name: "genre", options: ["Netflix", "Disney+"], isRequired: true });
     assert.deepEqual(c.extra[1], { name: "skip" });
+    assert.deepEqual(c.extraRequired, ["genre"]);
+    assert.deepEqual(c.extraSupported, ["genre", "skip"]);
   }
 });
 
