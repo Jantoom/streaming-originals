@@ -7,6 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { config as defaultConfig, services as defaultServices } from "../services.config.mjs";
 import { createClient, openCache, mapLimit } from "../src/tmdb.mjs";
+import { installPage } from "../src/install-page.mjs";
 import {
   buildManifest, catalogPaths, defaultCatalogPaths, flattenReleases, judgeMovie, judgeSeries,
   matchProviders, paginate, pickNetwork, toMeta,
@@ -258,9 +259,10 @@ export async function build({
   if (total === 0) throw new Error("Every catalog came back empty; not publishing. Check the TMDB key and the warnings above.");
 
   const names = services.map((s) => s.name);
-  await writeJson("manifest.json", buildManifest(names));
+  const manifest = buildManifest(names);
+  await writeJson("manifest.json", manifest);
   await writeFile(join(outDir, ".nojekyll"), "");
-  await writeFile(join(outDir, "index.html"), installPage(siteUrl));
+  await writeFile(join(outDir, "index.html"), sitePage(siteUrl, manifest, report));
   report.warnings = warnings;
   report.tmdb = { ...tmdb.stats(), cache: cache.stats() };
   await writeJson("report.json", report);
@@ -269,23 +271,33 @@ export async function build({
   return report;
 }
 
-function installPage(siteUrl) {
+function sitePage(siteUrl, manifest, report) {
   const base = siteUrl.replace(/\/$/, "");
-  const manifest = base ? `${base}/manifest.json` : "manifest.json";
-  const stremio = base ? manifest.replace(/^https?:\/\//, "stremio://") : "#";
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Streaming Originals</title><style>
-:root{color-scheme:light dark;--bg:#fff;--fg:#1a1a1a;--muted:#666;--accent:#7b5bf2}
-@media (prefers-color-scheme:dark){:root{--bg:#111;--fg:#eee;--muted:#999}}
-body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;padding:16px;box-sizing:border-box}
-main{max-width:520px}h1{margin:0 0 8px}p{color:var(--muted)}
-a.btn{display:inline-block;background:var(--accent);color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;margin-right:8px}
-code{word-break:break-all;font-size:14px}</style></head><body><main>
-<h1>Streaming Originals</h1>
-<p>A Stremio catalog of movies and series that premiered on a streaming service. Find it under Discover → Streaming Originals, then pick a service.</p>
-<p><a class="btn" href="${stremio}">Install in Stremio</a><a href="report.json">Build report</a></p>
-<p>Or paste this into Stremio's addon search:<br><code>${manifest}</code></p>
-</main></body></html>`;
+  const counts = Object.values(report.services);
+  const sum = (key) => counts.reduce((n, s) => n + s[key].kept, 0);
+  const type = (title, key) => ({
+    title,
+    detail: `${sum(key).toLocaleString("en-US")} titles`,
+    choicesLabel: "Services",
+    choices: Object.entries(report.services).map(([name, s]) => ({ label: name, detail: s[key].kept.toLocaleString("en-US") })),
+  });
+  return installPage({
+    name: manifest.name,
+    version: manifest.version,
+    icon: "film",
+    tagline: "Movies and series that premiered on a streaming service, as a Stremio catalog.",
+    manifestUrl: base ? `${base}/manifest.json` : "manifest.json",
+    stats: [
+      { value: counts.length, label: "services" },
+      { value: sum("movies"), label: "movies" },
+      { value: sum("series"), label: "series" },
+    ],
+    groups: [type("Movies", "movies"), type("Series", "series")],
+    about: `<p>Find it under <b>Discover</b>: pick Movies or Series, choose <b>Streaming Originals</b> as the catalog, then pick a service from the dropdown. It opens on ${manifest.catalogs[0].extra[0].options[0]}.</p>
+<p>Titles use IMDb ids, so your metadata and stream addons fill in details and streams as usual. Lists are rebuilt daily from TMDB.</p>
+<p>This product uses the TMDB API but is not endorsed or certified by TMDB.</p>`,
+    links: [{ label: "Build report", href: "report.json" }],
+  });
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
