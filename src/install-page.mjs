@@ -8,7 +8,7 @@
 // Settings are shown ticked and disabled: the addons are static files, so every
 // catalog is always included and there is nothing to choose yet.
 
-export const KIT_VERSION = "1.0.0";
+export const KIT_VERSION = "1.1.0";
 
 const ICONS = {
   film: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M17 3v18M3 7.5h4M3 12h18M3 16.5h4M17 7.5h4M17 16.5h4"/>',
@@ -72,14 +72,16 @@ ${stats.length ? `<ul class="stats">${stats.map((s) => `<li><b>${esc(fmt(s.value
 ${groups.length ? `<section class="card included" aria-labelledby="included-title">
   <div class="section-head"><h2 id="included-title">${esc(page.groupsTitle || "What's included")}</h2><span class="lock">${LOCK_ICON}Everything included</span></div>
   <p class="note">These are the catalogs this addon installs. Picking your own selection isn't available yet, so everything stays ticked.</p>
-  ${groups.map(group).join("\n  ")}
+  <div class="groups">${groups.map(group).join("\n  ")}</div>
 </section>` : ""}
 ${about ? `<section class="about">${about}</section>` : ""}
 ${links.length ? `<footer>${links.map((l) => `<a href="${esc(l.href)}">${esc(l.label)}</a>`).join("")}</footer>` : ""}
 </main><script>${SCRIPT}</script></body></html>`;
 }
 
-function group(g) {
+// Each catalog is its own boxed panel so its choices can't be mistaken for the
+// next catalog's.
+function group(g, i) {
   const layout = g.layout === "grid" ? "grid" : "chips";
   const choice = (c) => `<label class="choice"><input type="checkbox" checked disabled>`
     + `<span class="tick">${CHECK_ICON}</span>`
@@ -87,11 +89,11 @@ function group(g) {
     + `<span class="label">${esc(c.label)}</span>`
     + (c.detail ? `<span class="detail">${esc(c.detail)}</span>` : "")
     + `</label>`;
-  return `<fieldset class="group" disabled>
-    <legend class="group-head"><label class="switch"><input type="checkbox" role="switch" checked disabled><span></span></label>`
-    + `<span class="group-title">${esc(g.title)}</span>${g.detail ? `<span class="detail">${esc(g.detail)}</span>` : ""}</legend>
-    ${g.choicesLabel ? `<p class="eyebrow">${esc(g.choicesLabel)}</p>` : ""}<div class="${layout}">${g.choices.map(choice).join("")}</div>
-  </fieldset>`;
+  return `<div class="group" role="group" aria-labelledby="group-${i}">
+    <div class="group-head"><label class="switch"><input type="checkbox" role="switch" checked disabled aria-labelledby="group-${i}"><span></span></label>`
+    + `<span class="group-title" id="group-${i}">${esc(g.title)}</span>${g.detail ? `<span class="detail">${esc(g.detail)}</span>` : ""}</div>
+    <div class="group-body">${g.choicesLabel ? `<p class="eyebrow">${esc(g.choicesLabel)}</p>` : ""}<div class="${layout}">${g.choices.map(choice).join("")}</div></div>
+  </div>`;
 }
 
 function iconSvg(icon, stroke = "currentColor") {
@@ -112,7 +114,7 @@ body{margin:0;min-height:100vh;color:var(--fg);font:15px/1.55 system-ui,-apple-s
 background:radial-gradient(1100px 420px at 50% -160px,var(--accent-soft),transparent 70%),var(--bg);background-color:var(--bg)}
 svg{width:1em;height:1em;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 a{color:var(--accent)}
-.page{max-width:680px;margin:0 auto;padding:40px 16px 56px;display:flex;flex-direction:column;gap:20px}
+.page{max-width:820px;margin:0 auto;padding:40px 16px 56px;display:flex;flex-direction:column;gap:20px}
 .hero{display:flex;gap:16px;align-items:center}
 .logo{width:56px;height:56px;border-radius:16px;display:grid;place-items:center;color:#fff;font-size:28px;flex:none;
 background:linear-gradient(135deg,var(--accent),var(--accent-2));box-shadow:0 6px 20px var(--accent-soft)}
@@ -144,8 +146,11 @@ color:var(--fg);background:var(--surface-2);border:1px solid var(--border);trans
 h2{margin:0;font-size:18px}
 .lock{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted);background:var(--surface-2);border:1px solid var(--border);border-radius:99px;padding:4px 10px}
 .note{margin:6px 0 4px;color:var(--muted);font-size:13px}
-.group{margin:16px 0 0;padding:16px 0 0;border:0;border-top:1px solid var(--border);min-width:0}
-.group-head{display:flex;align-items:center;gap:10px;padding:0;margin-bottom:12px;width:100%}
+.groups{display:flex;flex-direction:column;gap:16px;margin-top:16px}
+.group{border:1px solid var(--border);border-radius:14px;background:var(--surface-2);overflow:hidden}
+.group-head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);
+background:color-mix(in srgb,var(--surface) 55%,var(--surface-2))}
+.group-body{padding:14px 16px 16px}
 .group-title{font-weight:650}
 .group-head .detail{margin-left:auto}
 .detail{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
@@ -169,7 +174,7 @@ background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--on) 35%,t
 footer{display:flex;flex-wrap:wrap;gap:6px 18px;padding:0 4px;font-size:14px}
 @media (max-width:480px){.page{padding-top:28px}.card{padding:16px;border-radius:16px}h1{font-size:22px}
 .url{flex-direction:column;padding:10px}.url code{padding:4px 4px 0}.copy{justify-content:center}.actions .btn{flex:1 1 100%}
-.grid{grid-template-columns:1fr 1fr}.grid .choice .detail{display:none}}
+.group-head{padding:10px 12px}.group-body{padding:12px}.grid{grid-template-columns:1fr 1fr}.grid .choice .detail{display:none}}
 `;
 
 // Resolves a relative manifest URL (local `npm run serve`), fills in the install
