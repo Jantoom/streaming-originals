@@ -8,7 +8,15 @@
 // Settings are shown ticked and disabled: the addons are static files, so every
 // catalog is always included and there is nothing to choose yet.
 
-export const KIT_VERSION = "1.1.0";
+export const KIT_VERSION = "1.2.0";
+
+// Every addon in the family. Each page's footer links to all of them except itself
+// (matched on `name`, which must equal the addon's manifest name).
+export const ADDONS = [
+  { name: "Streaming Originals", icon: "film", blurb: "Streaming service originals", href: "https://jantoom.github.io/streaming-originals/" },
+  { name: "Live Channels", icon: "tv", blurb: "Free live TV by country", href: "https://jantoom.github.io/live-channels/" },
+  { name: "Movie & Series Collections", icon: "stack", blurb: "Watch orders and franchises", href: "https://jantoom.github.io/movie-series-collections/" },
+];
 
 const ICONS = {
   film: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M17 3v18M3 7.5h4M3 12h18M3 16.5h4M17 7.5h4M17 16.5h4"/>',
@@ -75,7 +83,7 @@ ${groups.length ? `<section class="card included" aria-labelledby="included-titl
   <div class="groups">${groups.map(group).join("\n  ")}</div>
 </section>` : ""}
 ${about ? `<section class="about">${about}</section>` : ""}
-${links.length ? `<footer>${links.map((l) => `<a href="${esc(l.href)}">${esc(l.label)}</a>`).join("")}</footer>` : ""}
+${footer(name, links)}
 </main><script>${SCRIPT}</script></body></html>`;
 }
 
@@ -94,6 +102,17 @@ function group(g, i) {
     + `<span class="group-title" id="group-${i}">${esc(g.title)}</span>${g.detail ? `<span class="detail">${esc(g.detail)}</span>` : ""}</div>
     <div class="group-body">${g.choicesLabel ? `<p class="eyebrow">${esc(g.choicesLabel)}</p>` : ""}<div class="${layout}">${g.choices.map(choice).join("")}</div></div>
   </div>`;
+}
+
+function footer(name, links) {
+  const others = ADDONS.filter((a) => a.name !== name);
+  if (!others.length && !links.length) return "";
+  const addon = (a) => `<a class="addon" href="${esc(a.href)}"><span class="addon-icon">${iconSvg(a.icon)}</span>`
+    + `<span><b>${esc(a.name)}</b><span>${esc(a.blurb)}</span></span></a>`;
+  return `<footer>`
+    + (others.length ? `<nav class="more" aria-labelledby="more-title"><p class="eyebrow" id="more-title">More addons</p><div class="addons">${others.map(addon).join("")}</div></nav>` : "")
+    + (links.length ? `<div class="links">${links.map((l) => `<a href="${esc(l.href)}">${esc(l.label)}</a>`).join("")}</div>` : "")
+    + `</footer>`;
 }
 
 function iconSvg(icon, stroke = "currentColor") {
@@ -171,7 +190,16 @@ background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--on) 35%,t
 .chips .choice .detail::before{content:"· "}
 .about{color:var(--muted);padding:0 4px}
 .about p{margin:0 0 10px}.about b,.about strong{color:var(--fg)}
-footer{display:flex;flex-wrap:wrap;gap:6px 18px;padding:0 4px;font-size:14px}
+footer{display:flex;flex-direction:column;gap:16px;padding:16px 4px 0;border-top:1px solid var(--border)}
+.addons{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+.addon{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:14px;text-decoration:none;color:var(--fg);
+background:var(--surface);border:1px solid var(--border);box-shadow:var(--shadow);transition:border-color .15s,transform .1s}
+.addon:hover{border-color:var(--accent)}.addon:active{transform:scale(.99)}
+.addon:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.addon-icon{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;flex:none;font-size:18px;color:#fff;
+background:linear-gradient(135deg,var(--accent),var(--accent-2))}
+.addon b{display:block;font-size:14px;line-height:1.3}.addon b+span{display:block;color:var(--muted);font-size:12px}
+.links{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:14px}
 @media (max-width:480px){.page{padding-top:28px}.card{padding:16px;border-radius:16px}h1{font-size:22px}
 .url{flex-direction:column;padding:10px}.url code{padding:4px 4px 0}.copy{justify-content:center}.actions .btn{flex:1 1 100%}
 .group-head{padding:10px 12px}.group-body{padding:12px}.grid{grid-template-columns:1fr 1fr}.grid .choice .detail{display:none}}
